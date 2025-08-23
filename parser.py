@@ -99,7 +99,8 @@ def parse_report(text: str) -> dict:
 
     # safe extract_grade with guard
     def extract_grade(pattern, max_scale=5):
-        m = re.search(r"(?:{})\s*(I{1,3}|IV|V|\d)".format(pattern), text, re.IGNORECASE)
+        regex = rf"(?:{pattern})\s*(I{{1,3}}|IV|V|\d)"
+        m = re.search(regex, text, re.IGNORECASE)
         if not m:
             return None
         token = m.group(1)
