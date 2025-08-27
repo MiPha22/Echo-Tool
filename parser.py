@@ -341,14 +341,14 @@ Spironolacton|Eplerenon|Dapagliflozin|Empagliflozin|Torasemid|Furosemid|HCT", li
     
     # ---- Negativformulierung: keine MI => MR = 0 (nur wenn noch nichts erkannt) ----
     if "MR\n0-3" not in result:
-        if re.search(r"(?:keine|ohne)\s+(?:MI|Mitralinsuffizienz)\b", text, re.IGNORECASE):
+        if re.search(r"(?:keine|ohne)\s+(?:MI|Mitralinsuffizienz(?:en)?)", text, re.IGNORECASE):
         result["MR\n0-3"] = "0"
     if "AI\n0-3" not in result:
-        if re.search(r"(?:keine|ohne)\s+(?:AI|Aorteninsuffizienz)\b", text, re.IGNORECASE):
+        if re.search(r"(?:keine|ohne)\s+(?:AI|Aorteninsuffizienz(?:en)?)", text, re.IGNORECASE):
             result["AI\n0-3"] = "0"
 
     if "TR\n0-5" not in result:
-        if re.search(r"(?:keine|ohne)\s+(?:TI|Trikuspidalinsuffizienz)\b", text, re.IGNORECASE):
+        if re.search(r"(?:keine|ohne)\s+(?:TI|Trikuspidalinsuffizienz(?:en)?)", text, re.IGNORECASE):
             result["TR\n0-5"] = "0"
 
     # ---- Negativformulierung: keine AS ----
