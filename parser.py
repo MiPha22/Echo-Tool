@@ -267,7 +267,7 @@ Spironolacton|Eplerenon|Dapagliflozin|Empagliflozin|Torasemid|Furosemid|HCT", li
 
     # ----- Echo baseline (rest) -----
     base_date = find_date_near_keyword(text, r"Echokardiographie.*?vom") or find_any_date(text)
-    if base_date: row["rest echo\nbaseline"], row["date"] = 1, base_date
+    if base_date: row["date"] = base_date
 
     # Rhythm
     if re.search(r"\bSR\b|Sinusrhythmus", text, re.IGNORECASE):
@@ -298,6 +298,23 @@ Spironolacton|Eplerenon|Dapagliflozin|Empagliflozin|Torasemid|Furosemid|HCT", li
         row["E/e'"] = str(num(m_ee.group(1)))
         row["e' reduced\nno=0\nyes=1"] = 1 if num(m_ee.group(1)) and num(m_ee.group(1))>=14 else 0
 
+    # E/A
+    m_ea = re.search(r"(?:E\s*/\s*A|E/A)\s*[:=]?\s*(\d+(?:[.,]\d+)?)", text, re.IGNORECASE)
+    if not m_ea:
+        # fallback: Muster "E/A\n 0,77"
+        m_ea = re.search(r"E/A\s*\(?\s*(\d+(?:[.,]\d+)?)", text, re.IGNORECASE)
+    if m_ea:
+        result["E/A"] = m_ea.group(1).replace(",", ".")
+
+    # E/e'
+    m_ee = re.search(r"(?:E\s*/\s*e['′]?)\s*[:=]?\s*(\d+(?:[.,]\d+)?)", text, re.IGNORECASE)
+    if not m_ee:
+        # fallback: Muster "E/E‘ 9" (mit Sonderzeichen Apostroph)
+        m_ee = re.search(r"E\s*/\s*E[‘']\s*(\d+(?:[.,]\d+)?)", text, re.IGNORECASE)
+    if m_ee:
+        result["E/e'"] = m_ee.group(1).replace(",", ".")
+
+
     # TR Vmax -> Flag
     m_trv = re.search(r"(?:TR\s*Vmax|TRVmax|TR\s*V\s*max)\s*("+DEC+")\s*m/s", text, re.IGNORECASE)
     if m_trv:
@@ -321,22 +338,80 @@ Spironolacton|Eplerenon|Dapagliflozin|Empagliflozin|Torasemid|Furosemid|HCT", li
         if pmean and pmean>=40 or (koef and koef<1.0): row["AS\n0-3"] = "3"
         elif pmean and pmean>=20 or (koef and koef<1.5): row["AS\n0-3"] = "2"
         else: row["AS\n0-3"] = "1"
+    
+    # ---- Negativformulierung: keine MI => MR = 0 (nur wenn noch nichts erkannt) ----
+    if "MR\n0-3" not in result:
+        if re.search(r"(?:keine|ohne)\s+(?:MI|Mitralinsuffizienz)\b", text, re.IGNORECASE):
+        result["MR\n0-3"] = "0"
+    if "AI\n0-3" not in result:
+        if re.search(r"(?:keine|ohne)\s+(?:AI|Aorteninsuffizienz)\b", text, re.IGNORECASE):
+            result["AI\n0-3"] = "0"
 
-    # Wandbewegung (Rest) – grob: „Hypokinesie anteroseptal“ etc.
-    seg_map = {
-        "antero[- ]?septal":"antero-\nseptal\nnormal=0\nhypokin=1\nakin=2\ndyskin=3",
-        "antero[- ]?lateral":"antero- \nlateral\nnormal=0\nhypokin=1\nakin=2\ndyskin=3",
-        "anterior":"anterior\nnormal=0\nhypokin=1\nakin=2\ndyskin=3",
-        "infero[- ]?septal":"infero-\nseptal\nnormal=0\nhypokin=1\nakin=2\ndyskin=3",
-        "infero[- ]?lateral":"infero-\nlateral\nnormal=0\nhypokin=1\nakin=2\ndyskin=3",
-        "inferior":"inferior\nnormal=0\nhypokin=1\nakin=2\ndyskin=3",
+    if "TR\n0-5" not in result:
+        if re.search(r"(?:keine|ohne)\s+(?:TI|Trikuspidalinsuffizienz)\b", text, re.IGNORECASE):
+            result["TR\n0-5"] = "0"
+
+    # ---- Negativformulierung: keine AS ----
+    if "AS\n0-3" not in result:
+        if re.search(r"(?:keine|ohne)\s+(?:AS|Aortenklappenstenose)", text, re.IGNORECASE):
+            result["AS\n0-3"] = "0"
+
+
+    # ---------- Wandbewegung (REST) ----------
+    # Spaltennamen der Segmente exakt wie in deiner Tabelle
+    seg_cols = {
+        r"antero[- ]?septal": "antero-\nseptal\nnormal=0\nhypokin=1\nakin=2\ndyskin=3",
+        r"antero[- ]?lateral": "antero- \nlateral\nnormal=0\nhypokin=1\nakin=2\ndyskin=3",
+        r"\banterior\b":       "anterior\nnormal=0\nhypokin=1\nakin=2\ndyskin=3",
+        r"infero[- ]?septal":  "infero-\nseptal\nnormal=0\nhypokin=1\nakin=2\ndyskin=3",
+        r"infero[- ]?lateral": "infero-\nlateral\nnormal=0\nhypokin=1\nakin=2\ndyskin=3",
+        r"\binferior\b":       "inferior\nnormal=0\nhypokin=1\nakin=2\ndyskin=3",
     }
-    if re.search(r"Hypokinesie|Akinesie|Dyskinesie", text, re.IGNORECASE):
-        row["wall motion\nrest "] = 1
-        for key, col in seg_map.items():
-            if re.search(key, text, re.IGNORECASE):
-                row[col] = "1"  # hypokinetisch als Standard (Feingradung gern nachrüsten)
-        row["global hypokinesie\nno=0\nyes=1"] = 1 if re.search(r"globale Hypokinesie", text, re.IGNORECASE) else 0
+
+    # alle Segmente default = "0", falls sie in der Tabelle stehen
+    for col in seg_cols.values():
+        result[col] = result.get(col, "0")
+
+    # „keine/ohne regionalen Kinetik-/Wandbewegungsstörungen“ => alles 0
+    no_regional = re.search(
+        r"(?:keine|ohne)\s+regional(?:en|e)\s+(?:Kinetik|Wandbewegungs)stör",
+        text, re.IGNORECASE
+    )
+    if no_regional:
+        result["wall motion\nrest "] = 0
+        result["global hypokinesie\nno=0\nyes=1"] = 0
+        result["number of segments with ischemia"] = 0
+    else:
+        # Intensität: Hypo=1, Akin=2, Dyskin=3 (Standard falls unklar: 1)
+        severity = None
+        if re.search(r"\bDyskin", text, re.IGNORECASE):
+            severity = "3"
+        elif re.search(r"\bAkines", text, re.IGNORECASE):
+            severity = "2"
+        elif re.search(r"\bHypokines", text, re.IGNORECASE):
+            severity = "1"
+
+        matched_any = False
+        if severity:
+            for pat, col in seg_cols.items():
+                if re.search(pat, text, re.IGNORECASE):
+                    result[col] = severity
+                    matched_any = True
+
+        # Falls Kinetikstörung erwähnt, aber kein Segment genannt -> nur Flag setzen
+        if severity:
+            result["wall motion\nrest "] = 1
+        elif re.search(r"Kinetikstör|Wandbewegungsstör", text, re.IGNORECASE):
+            result["wall motion\nrest "] = 1
+
+        # global hypokinesie Flag
+        result["global hypokinesie\nno=0\nyes=1"] = 1 if re.search(r"globale\s+Hypokinesie", text, re.IGNORECASE) else 0
+
+        # „number of segments with ischemia“ gehört eigentlich zum STRESS-Teil.
+        # Für REST setzen wir nur, wenn ausdrücklich gefordert – sonst nicht anfassen.
+        # Wenn du für REST sicher 0 willst, kommentier die nächste Zeile ein:
+        # result["number of segments with ischemia"] = 0
+
 
     # ----- Stressecho baseline -----
     if re.search(r"Stressechokardiograph", text, re.IGNORECASE):
