@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-from parser import parse_report
+from report_parser import parse_report
 
 st.set_page_config(page_title="Echo Extractor — Paste & Parse", layout="wide")
 st.title("🫀 Echo Extractor — Paste & Parse")
